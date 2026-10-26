@@ -1,0 +1,397 @@
+{
+  "id": "b7e4c1a0-5f23-4d89-9c16-2a8e6d0f4b31",
+  "name": "Chatbot de Clima no Telegram",
+  "active": false,
+  "nodes": [
+    {
+      "id": "6f1c0a2e-7b34-4d58-9a61-2c8e5f0b1d34",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      },
+      "webhookId": "d36e8f40-e172-4059-948b-f91e23dc5708"
+    },
+    {
+      "id": "8e4d2c1b-0a97-4f6e-b531-7c2a9d8e6f10",
+      "name": "Formatar entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e47f3b92-1a58-4c06-9d27-8b6c5a4e3f21",
+              "name": "queue",
+              "value": "={{ (() => { const raw = String(($json.message && $json.message.text) || '').trim().toLowerCase(); const noAccent = raw.normalize('NFD').replace(/[\\u0300-\\u036f]/g, ''); const cleaned = noAccent.replace(/\\s*,\\s*/g, ',').replace(/\\s+/g, ' ').replace(/\\.+$/g, '').trim(); if (!cleaned) return ''; const parts = cleaned.split(',').map((part) => part.trim()).filter(Boolean); const city = parts[0] || ''; const uf = (parts[1] || '').replace(/\\s+/g, ''); let country = (parts[2] || 'br').replace(/\\s+/g, ''); if (country === 'brasil' || country === 'brazil') country = 'br'; if (!city) return ''; if (!uf) return city + ',br'; return city + ',' + uf + ',' + country; })() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1b7e9c4a-5d28-4e63-8f70-a9c3d2e1b456",
+      "name": "Formato válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "f58a4c03-2b69-4d17-8e38-9c7d6b5f4032",
+              "leftValue": "={{ /^[^,]+,[a-z]{2},br$/.test(String($json.queue || '')) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3c8a1d5e-6f09-4b72-9d14-e2a7c6b58031",
+      "name": "OpenWeather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.queue }}"
+            },
+            {
+              "name": "queue",
+              "value": "={{ $json.queue }}"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            },
+            {
+              "name": "lang",
+              "value": "pt_br"
+            },
+            {
+              "name": "appid",
+              "value": "={{ $env.OPENWEATHER_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5d0e2f6a-8b1c-4a93-9e25-f3b8d7c69142",
+      "name": "Resposta válida",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1160,
+        180
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a69b5d14-3c70-4e28-9f49-ad8e7c604143",
+              "leftValue": "={{ Number($json.statusCode) >= 200 && Number($json.statusCode) < 300 && !!($json.body && $json.body.main) && typeof $json.body.main.temp === 'number' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7e1f3a8b-9c2d-4b04-8f36-a4c9e8d70253",
+      "name": "Mensagem fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        80
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const item = $input.first().json;\nconst body = item.body || {};\nconst main = body.main || {};\nconst temp = Math.round(Number(main.temp));\nconst city = body.name;\nconst message = '🌤️ A temperatura em ' + city + ' é de ' + temp + '°C.';\n\nreturn [\n  {\n    json: {\n      message,\n      ok: true,\n      city,\n      temp,\n    },\n    pairedItem: { item: 0 },\n  },\n];\n"
+      }
+    },
+    {
+      "id": "9f2a4b0c-ad3e-4c15-9047-b5dae9f81364",
+      "name": "Google Gemini",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        80
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "models/gemini-2.5-flash",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ 'Reescreva em português do Brasil, com tom curto e amigável. Não invente dados. Mantenha a cidade e a temperatura. Cidade: ' + $json.city + '. Temperatura: ' + $json.temp + '°C. Mensagem base: ' + $json.message + '. Responda somente JSON no formato {\"message\":\"...\",\"ok\":true}.' }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": true,
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0.1,
+          "maxOutputTokens": 256,
+          "systemMessage": "Você reescreve avisos de clima em português do Brasil. Responda somente JSON válido no formato {\"message\":\"...\",\"ok\":true}. A message deve ser curta, amigável e conter a cidade e a temperatura em °C. Não invente cidade nem temperatura. Se não conseguir, responda {\"message\":\"\",\"ok\":false}."
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "name": "Google Gemini account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a03b5c1d-be4f-4d26-a158-c6ebf0a92475",
+      "name": "Escolher mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        80
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const fallbackItem = $('Mensagem fallback').first().json;\nlet message = fallbackItem.message;\n\nfunction fromObject(value, depth) {\n  if (value == null || depth > 5) return '';\n  if (typeof value === 'string') {\n    const trimmed = value.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();\n    if (!trimmed.startsWith('{')) return '';\n    try {\n      return fromObject(JSON.parse(trimmed), depth + 1);\n    } catch (error) {\n      return '';\n    }\n  }\n  if (typeof value !== 'object') return '';\n  if (value.ok === true && typeof value.message === 'string' && value.message.trim()) {\n    return value.message.trim();\n  }\n  const nestedKeys = ['text', 'content', 'output', 'response', 'data'];\n  for (const key of nestedKeys) {\n    const found = fromObject(value[key], depth + 1);\n    if (found) return found;\n  }\n  if (value.message && typeof value.message === 'object') {\n    const found = fromObject(value.message, depth + 1);\n    if (found) return found;\n  }\n  if (Array.isArray(value.candidates)) {\n    for (const candidate of value.candidates) {\n      const found = fromObject(candidate, depth + 1);\n      if (found) return found;\n    }\n  }\n  if (Array.isArray(value.parts)) {\n    for (const part of value.parts) {\n      const found = fromObject(part, depth + 1);\n      if (found) return found;\n    }\n  }\n  return '';\n}\n\nconst chosen = fromObject($input.first().json, 0);\nif (chosen) message = chosen;\n\nreturn [\n  {\n    json: { message },\n    pairedItem: { item: 0 },\n  },\n];\n"
+      }
+    },
+    {
+      "id": "b14c6d2e-cf50-4e37-b269-d7fc01ba3586",
+      "name": "Enviar temperatura",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2360,
+        80
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "c25d7e3f-d061-4f48-837a-e80d12cb4697",
+      "name": "Enviar erro",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1160,
+        460
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "❌ Cidade não encontrada. Use o formato Cidade,UF,BR (ex.: São Paulo,SP,BR).",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Formatar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar entrada": {
+      "main": [
+        [
+          {
+            "node": "Formato válido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato válido": {
+      "main": [
+        [
+          {
+            "node": "OpenWeather",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenWeather": {
+      "main": [
+        [
+          {
+            "node": "Resposta válida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta válida": {
+      "main": [
+        [
+          {
+            "node": "Mensagem fallback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensagem fallback": {
+      "main": [
+        [
+          {
+            "node": "Google Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini": {
+      "main": [
+        [
+          {
+            "node": "Escolher mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escolher mensagem": {
+      "main": [
+        [
+          {
+            "node": "Enviar temperatura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
